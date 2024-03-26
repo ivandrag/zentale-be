@@ -7,15 +7,24 @@ var firestore = firebase.firestore()
 exports.resetCreditsForFreeUsers = functions.pubsub
     .schedule('0 0 1 * *')
     .onRun(async (context) => {
-        const users = firestore.collection('users')
-
-        const imageCreditsUser = await users.where('credits', '<', 2).get()
-        imageCreditsUser.forEach(snapshot => {
-            snapshot.ref.update({ credits: 4 })
-        })
-
+        const users = firestore.collection('users');
+        
+        const freeUsersSnapshot = await users
+            .where('subscription.status', '==', 'expired')
+            .get();
+        
+        const batch = firestore.batch();
+        
+        freeUsersSnapshot.forEach(doc => {
+            const userRef = doc.ref;
+            batch.update(userRef, { 'subscription.textCredits': 2 });
+        });
+        
+        await batch.commit();
+    
         return null;
-    })
+    });
+
 
 exports.assignCreditsToNewUsers = functions.auth.user().onCreate(async (user) => {
     const apiKey = crypto.randomBytes(20).toString('hex');
