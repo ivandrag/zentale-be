@@ -26,10 +26,12 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
 app.use(bodyParser.json({ limit: '5mb' }));
-// app.use('/generate-story', authMiddleware)
+app.use('/generate-story', authMiddleware)
+// app.user('/generate-audio-story', authMiddleware)
 
 app.post('/generate-story', async (req, res) => {
     const userId = req.userId
+    const subscription = req.subscription
     const languageOfTheStory = req.body.languageOfTheStory
     const imageUrlList = req.body.imageUrlList;
     const subscriptionStatus = req.subscriptionStatus
@@ -80,10 +82,31 @@ app.post('/generate-story', async (req, res) => {
               { role: "user", content: `Create a story for kids with the following title: ${storyTitle}. Write the story in ${languageOfTheStory}. Do not add the story title when you return the content.` },
             ],
             model: "gpt-4-0125-preview",
-            // response_format: { type: "json_object" },
           });
 
         const storyContent = completion.choices[0].message.content
+
+        if (subscription.status === "expired") {
+            try {
+                await firestore.runTransaction(async (transaction) => {
+                    const userRef = firestore.collection('users').doc(userId);
+                    const userDoc = await transaction.get(userRef);
+                    const userData = userDoc.data();
+        
+                    if (!userData) {
+                        throw new Error('UserDataNotFound');
+                    }
+        
+                    const userSubscription = userData.subscription;
+                    if (userSubscription.status === "expired" && userSubscription.textCredits > 0) {
+                        const updatedCredits = userSubscription.textCredits - 1;
+                        transaction.update(userRef, { 'subscription.textCredits': updatedCredits });
+                    }
+                });
+            } catch (transactionError) {
+                console.error("Transaction failed: ", transactionError);
+            }
+        }
 
         res.send({"data": {
             "storyId": "",

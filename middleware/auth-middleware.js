@@ -23,10 +23,10 @@ function authMiddleware(request, response, next) {
                 .get()
                 .then(snapshot => {
                     var data = snapshot.data()
-                    request.credits = data.credits
-                    request.subscriptionStatus = data.subscriptionStatus
-                    if (data.credits <= 0 && data.subscriptionStatus == "expired") {
-                        response.status(403).send({ message: "You need at least one credit or paying subscriber to chat with a photo" })
+                    let subscription = data.subscription
+                    request.subscription = subscription
+                    if (subscription.textCredits <= 0 && subscription.status == "expired") {
+                        response.status(403).send({ message: "You need at least one credit to generate a story" })
                     } else {
                         next()
                     }
