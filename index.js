@@ -8,6 +8,7 @@ const { OpenAI } = require('openai');
 const { getAudioStoryUrl } = require('./helpers/generate_audio_story_url');
 const authMiddleware = require("./middleware/auth-middleware");
 const audioAuthMiddleware = require("./middleware/audio-auth-middleware");
+const { v4: uuidv4 } = require('uuid');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -37,6 +38,7 @@ app.post('/generate-story', async (req, res) => {
     const subscriptionStatus = req.subscriptionStatus
     const maxTokens = subscriptionStatus === "expired" ? 1000 : 4096;
     const visionPromptText = `Create a story title in ${languageOfTheStory} language for the object in the photo.`
+    const storyId = uuidv4();
 
     const imageUrlObjects = imageUrlList.map(url => ({
         type: "image_url",
@@ -72,6 +74,28 @@ app.post('/generate-story', async (req, res) => {
           });
 
         image_url = imageResponse.data[0].url;
+        const downloadedImageResponse = await axios({ url: image_url, responseType: 'stream' });
+
+        const filename = `textStories/${userId}/${storyId}.png`;
+        const file = bucket.file(filename);
+
+        const stream = file.createWriteStream({
+            metadata: {
+                contentType: 'image/png',
+            },
+        });
+
+        await new Promise((resolve, reject) => {
+            downloadedImageResponse.data
+                .pipe(stream)
+                .on('error', reject)
+                .on('finish', resolve);
+        });
+
+        const [publicUrl] = await file.getSignedUrl({
+            action: 'read',
+            expires: '03-09-2500',
+        });
 
         const completion = await openai.chat.completions.create({
             messages: [
@@ -108,114 +132,24 @@ app.post('/generate-story', async (req, res) => {
             }
         }
 
-        res.send({"data": {
-            "storyId": "",
-            "storyImage": image_url, 
-            "storyTitle": sanitizedStoryTitle, 
-            "storyContent": storyContent,
-            "storyLanguage": languageOfTheStory
-        }})
+        const storyData = {
+            storyId: storyId,
+            storyImage: publicUrl,
+            storyTitle: sanitizedStoryTitle,
+            storyContent: storyContent,
+            storyLanguage: languageOfTheStory,
+            storyAudioUrl: ""
+        };
+
+        await firestore.collection('stories').doc(userId).collection(storyId).set(storyData);
+
+        res.send({ "data": storyData });
 
     } catch(error) {
         console.error("Error in operation: ", error);
         res.status(500).send({"message": "There was an error processing your request"});
     }
 })
-
-// app.post('/generate-audio-story', async (req, res) => {
-//     const userId = req.userId
-//     const subscription = req.subscription
-//     // const voiceId = req.body.voiceId
-//     const language = req.body.language
-//     const text = req.body.text
-//     const englishVoiceId = "SoB87aL6OF4PNV53glOc"; // Using Ella Soft and sweet for this example
-//     const romanianVoiceId = "3z9q8Y7plHbvhDZehEII"
-//     const spanishVoiceId = "8ftlfIEYnEkYY6iLanUO"
-
-//     let voiceId
-//     switch (language) {
-//         case "English":
-//             voiceId = englishVoiceId
-//             break;
-//         case "Spanish":
-//             voiceId = spanishVoiceId
-//             break;
-//         case "Romanian":
-//             voiceId = romanianVoiceId
-//             break;
-//         default:
-//             break;
-//     } 
-
-//     try {
-//         const response = await axios({
-//             method: 'post',
-//             url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-//             data: {
-//                 text: text,
-//                 model_id: "eleven_multilingual_v2",
-//                 voice_settings: {
-//                     similarity_boost: 0.5,
-//                     stability: 0.5
-//                 }
-//             },
-//             headers: {
-//                 'xi-api-key': elevenLabsKey,
-//                 'Content-Type': 'application/json'
-//             },
-//             responseType: 'stream'
-//         });
-
-//         const fileName = `audioStories/${userId}/${Date.now()}-${voiceId}.mp3`;
-//         const file = bucket.file(fileName);
-
-//         response.data.pipe(file.createWriteStream({
-//             metadata: {
-//                 contentType: 'audio/mpeg',
-//             }
-//         }))
-//         .on('error', (error) => {
-//             console.error('Error streaming file to Firebase Storage:', error);
-//             res.status(500).send('Failed to upload audio story');
-//         })
-//         .on('finish', () => {
-//             file.getSignedUrl({
-//                 action: 'read',
-//                 expires: '03-09-2500', 
-//             }).then(signedUrls => {
-//                 const url = signedUrls[0];
-//                 try {
-//                     await firestore.runTransaction(async (transaction) => {
-//                         const userRef = firestore.collection('users').doc(userId);
-//                         const userDoc = await transaction.get(userRef);
-//                         const userData = userDoc.data();
-            
-//                         if (!userData) {
-//                             throw new Error('UserDataNotFound');
-//                         }
-            
-//                         const userSubscription = userData.subscription;
-//                         if (userSubscription.audioCredits > 0) {
-//                             const updatedCredits = userSubscription.audioCredits - 1;
-//                             transaction.update(userRef, { 'subscription.audioCredits': updatedCredits });
-//                         }
-//                         res.send({"data": {"storyId": "", "storyAudioUrl": url}})
-//                     });
-//                 } catch (transactionError) {
-//                     console.error("Transaction failed: ", transactionError);
-//                     res.status(500).send({"message": "There was an error processing your request"});
-//                 }
-//             }).catch(error => {
-//                 console.error('Error generating signed URL:', error);
-//                 res.status(500).send({"message": "There was an error processing your request"});
-//             });
-//         });
-        
-//     } catch (error) {
-//         console.error("Error generating audio story: ", error);
-//         res.status(500).send({"message": "There was an error processing your request"});
-//     }
-// });
 
 app.post('/generate-audio-story', async (req, res) => {
     const userId = req.userId;

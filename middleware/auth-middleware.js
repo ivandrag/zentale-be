@@ -3,7 +3,6 @@ var firestore = firebase.firestore()
 
 function authMiddleware(request, response, next) {
     const headerToken = request.headers.authorization;
-    console.log(headerToken)
     if (!headerToken) {
         return response.status(401).send({ message: "No token provided" });
     }
