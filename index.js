@@ -134,6 +134,7 @@ app.post('/generate-story', async (req, res) => {
 
         const storyData = {
             storyId: storyId,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             storyImage: publicUrl,
             storyTitle: sanitizedStoryTitle,
             storyContent: storyContent,
@@ -141,7 +142,7 @@ app.post('/generate-story', async (req, res) => {
             storyAudioUrl: ""
         };
 
-        await firestore.collection('stories').doc(userId).collection(storyId).set(storyData);
+        await firestore.collection('stories').doc(userId).collection("private").doc(storyId).set(storyData);
 
         res.send({ "data": storyData });
 
@@ -157,8 +158,14 @@ app.post('/generate-audio-story', async (req, res) => {
     const text = req.body.text;
     const voiceIds = {
         "English": "SoB87aL6OF4PNV53glOc",
+        "French": "EjtTWI2Y9BBilPwnIBhg",
+        "German": "QtXsTvuI72CiSlfxczvg",
+        "Italian": "ByVILX2H5wPAwDiNVKAR", // Germano Carella
         "Spanish": "8ftlfIEYnEkYY6iLanUO",
-        "Romanian": "3z9q8Y7plHbvhDZehEII"
+        "Romanian": "3z9q8Y7plHbvhDZehEII",
+        "Russian": "Dvfxihpdb69LFIkmih0k",
+        "Portuguese": "NndrHq4eUijN4wsQVtzW",
+        "Turkish": "NsFK0aDGLbVusA7tQfOB"
     };
 
     const voiceId = voiceIds[language];
