@@ -1,7 +1,7 @@
 var firebase = require("../firebase/index");
 var firestore = firebase.firestore()
 
-function authMiddleware(request, response, next) {
+function audioAuthMiddleware(request, response, next) {
     const headerToken = request.headers.authorization;
     console.log(headerToken)
     if (!headerToken) {
@@ -25,8 +25,8 @@ function authMiddleware(request, response, next) {
                     var data = snapshot.data()
                     let subscription = data.subscription
                     request.subscription = subscription
-                    if ((subscription.textCredits <= 0 && subscription.status == "expired")) {
-                        response.status(403).send({ message: "You need at least one credit to generate a story" })
+                    if (subscription.audioCredits <= 0) {
+                        response.status(403).send({ message: "You need at least one credit to generate an audio story" })
                     } else {
                         next()
                     }
@@ -35,4 +35,4 @@ function authMiddleware(request, response, next) {
         .catch(() => response.status(403).send({ message: "Could not authorize" }));
 }
 
-module.exports = authMiddleware;
+module.exports = audioAuthMiddleware;

@@ -5,13 +5,13 @@ const bodyParser = require('body-parser');
 var firebase = require("./firebase/index");
 var firestore = firebase.firestore()
 const { OpenAI } = require('openai');
+const { getAudioStoryUrl } = require('./helpers/generate_audio_story_url');
 const authMiddleware = require("./middleware/auth-middleware");
+const audioAuthMiddleware = require("./middleware/audio-auth-middleware");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
-
-const elevenLabsKey = process.env.ELEVENLABS_KEY
 
 const bucket = firebase.storage().bucket();
 
@@ -27,7 +27,7 @@ app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
 app.use(bodyParser.json({ limit: '5mb' }));
 app.use('/generate-story', authMiddleware)
-// app.user('/generate-audio-story', authMiddleware)
+app.use('/generate-audio-story', audioAuthMiddleware)
 
 app.post('/generate-story', async (req, res) => {
     const userId = req.userId
@@ -122,79 +122,143 @@ app.post('/generate-story', async (req, res) => {
     }
 })
 
-app.post('/generate-audio-story', async (req, res) => {
-    // const userId = req.userId
-    const userId = "random"
-    // const voiceId = req.body.voiceId
-    const language = req.body.language
-    const text = req.body.text
-    const englishVoiceId = "SoB87aL6OF4PNV53glOc"; // Using Ella Soft and sweet for this example
-    const romanianVoiceId = "3z9q8Y7plHbvhDZehEII"
-    const spanishVoiceId = "8ftlfIEYnEkYY6iLanUO"
+// app.post('/generate-audio-story', async (req, res) => {
+//     const userId = req.userId
+//     const subscription = req.subscription
+//     // const voiceId = req.body.voiceId
+//     const language = req.body.language
+//     const text = req.body.text
+//     const englishVoiceId = "SoB87aL6OF4PNV53glOc"; // Using Ella Soft and sweet for this example
+//     const romanianVoiceId = "3z9q8Y7plHbvhDZehEII"
+//     const spanishVoiceId = "8ftlfIEYnEkYY6iLanUO"
 
-    let voiceId
-    switch (language) {
-        case "English":
-            voiceId = englishVoiceId
-            break;
-        case "Spanish":
-            voiceId = spanishVoiceId
-            break;
-        case "Romanian":
-            voiceId = romanianVoiceId
-            break;
-        default:
-            break;
-    } 
+//     let voiceId
+//     switch (language) {
+//         case "English":
+//             voiceId = englishVoiceId
+//             break;
+//         case "Spanish":
+//             voiceId = spanishVoiceId
+//             break;
+//         case "Romanian":
+//             voiceId = romanianVoiceId
+//             break;
+//         default:
+//             break;
+//     } 
+
+//     try {
+//         const response = await axios({
+//             method: 'post',
+//             url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+//             data: {
+//                 text: text,
+//                 model_id: "eleven_multilingual_v2",
+//                 voice_settings: {
+//                     similarity_boost: 0.5,
+//                     stability: 0.5
+//                 }
+//             },
+//             headers: {
+//                 'xi-api-key': elevenLabsKey,
+//                 'Content-Type': 'application/json'
+//             },
+//             responseType: 'stream'
+//         });
+
+//         const fileName = `audioStories/${userId}/${Date.now()}-${voiceId}.mp3`;
+//         const file = bucket.file(fileName);
+
+//         response.data.pipe(file.createWriteStream({
+//             metadata: {
+//                 contentType: 'audio/mpeg',
+//             }
+//         }))
+//         .on('error', (error) => {
+//             console.error('Error streaming file to Firebase Storage:', error);
+//             res.status(500).send('Failed to upload audio story');
+//         })
+//         .on('finish', () => {
+//             file.getSignedUrl({
+//                 action: 'read',
+//                 expires: '03-09-2500', 
+//             }).then(signedUrls => {
+//                 const url = signedUrls[0];
+//                 try {
+//                     await firestore.runTransaction(async (transaction) => {
+//                         const userRef = firestore.collection('users').doc(userId);
+//                         const userDoc = await transaction.get(userRef);
+//                         const userData = userDoc.data();
+            
+//                         if (!userData) {
+//                             throw new Error('UserDataNotFound');
+//                         }
+            
+//                         const userSubscription = userData.subscription;
+//                         if (userSubscription.audioCredits > 0) {
+//                             const updatedCredits = userSubscription.audioCredits - 1;
+//                             transaction.update(userRef, { 'subscription.audioCredits': updatedCredits });
+//                         }
+//                         res.send({"data": {"storyId": "", "storyAudioUrl": url}})
+//                     });
+//                 } catch (transactionError) {
+//                     console.error("Transaction failed: ", transactionError);
+//                     res.status(500).send({"message": "There was an error processing your request"});
+//                 }
+//             }).catch(error => {
+//                 console.error('Error generating signed URL:', error);
+//                 res.status(500).send({"message": "There was an error processing your request"});
+//             });
+//         });
+        
+//     } catch (error) {
+//         console.error("Error generating audio story: ", error);
+//         res.status(500).send({"message": "There was an error processing your request"});
+//     }
+// });
+
+app.post('/generate-audio-story', async (req, res) => {
+    const userId = req.userId;
+    const language = req.body.language;
+    const text = req.body.text;
+    const voiceIds = {
+        "English": "SoB87aL6OF4PNV53glOc",
+        "Spanish": "8ftlfIEYnEkYY6iLanUO",
+        "Romanian": "3z9q8Y7plHbvhDZehEII"
+    };
+
+    const voiceId = voiceIds[language];
+
+    if (!voiceId) {
+        return res.status(400).send({"message": "Invalid language specified"});
+    }
 
     try {
-        const response = await axios({
-            method: 'post',
-            url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-            data: {
-                text: text,
-                model_id: "eleven_multilingual_v2",
-                voice_settings: {
-                    similarity_boost: 0.5,
-                    stability: 0.5
-                }
-            },
-            headers: {
-                'xi-api-key': elevenLabsKey,
-                'Content-Type': 'application/json'
-            },
-            responseType: 'stream'
-        });
+        const url = await getAudioStoryUrl(text, voiceId, userId);
 
-        const fileName = `audioStories/${userId}/${Date.now()}-${voiceId}.mp3`;
-        const file = bucket.file(fileName);
-
-        response.data.pipe(file.createWriteStream({
-            metadata: {
-                contentType: 'audio/mpeg',
+        await firestore.runTransaction(async (transaction) => {
+            const userRef = firestore.collection('users').doc(userId);
+            const userDoc = await transaction.get(userRef);
+            const userData = userDoc.data();
+            
+            if (!userData) {
+                throw new Error('UserDataNotFound');
             }
-        }))
-        .on('error', (error) => {
-            console.error('Error streaming file to Firebase Storage:', error);
-            res.status(500).send('Failed to upload audio story');
-        })
-        .on('finish', () => {
-            file.getSignedUrl({
-                action: 'read',
-                expires: '03-09-2500', 
-            }).then(signedUrls => {
-                const url = signedUrls[0];
-                res.send({"data": {"storyId": "", "storyAudioUrl": url}})
-            }).catch(error => {
-                console.error('Error generating signed URL:', error);
-            });
+            
+            const userSubscription = userData.subscription;
+            if (userSubscription.audioCredits > 0) {
+                const updatedCredits = userSubscription.audioCredits - 1;
+                transaction.update(userRef, { 'subscription.audioCredits': updatedCredits });
+            }
         });
+        res.send({"data": {"storyId": "", "storyAudioUrl": url}});
         
     } catch (error) {
-        console.error("Error generating audio story: ", error);
+        console.error("Error: ", error);
         res.status(500).send({"message": "There was an error processing your request"});
     }
 });
+
 
 app.post('/update-subscription', async (req, res) => {
     const userUid = req.body.event.app_user_id;
@@ -210,21 +274,23 @@ app.post('/update-subscription', async (req, res) => {
 
     let type = "";
     let additionalAudioCredits = 0;
-    switch (productId) {
-        case "zentale.lite.weekly":
-            type = "lite-weekly";
-            additionalAudioCredits = 2;
-            break;
-        case "zentale.lite.monthly":
-            type = "lite-monthly";
-            additionalAudioCredits = 10;
-            break;
-        case "zentale.lite.yearly":
-            type = "lite-yearly";
-            additionalAudioCredits = 130;
-            break;
-        default:
-            type = "unknown";
+    if (status == "active") {
+        switch (productId) {
+            case "zentale.lite.weekly":
+                type = "lite-weekly";
+                additionalAudioCredits = 2;
+                break;
+            case "zentale.lite.monthly":
+                type = "lite-monthly";
+                additionalAudioCredits = 10;
+                break;
+            case "zentale.lite.yearly":
+                type = "lite-yearly";
+                additionalAudioCredits = 130;
+                break;
+            default:
+                type = "unknown";
+        }
     }
 
     try {
