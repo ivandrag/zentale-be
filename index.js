@@ -154,52 +154,122 @@ app.post('/generate-story', async (req, res) => {
 
 app.post('/generate-audio-story', async (req, res) => {
     const userId = req.userId;
-    const language = req.body.language;
-    const text = req.body.text;
-    const voiceIds = {
-        "English": "SoB87aL6OF4PNV53glOc",
-        "French": "EjtTWI2Y9BBilPwnIBhg",
-        "German": "QtXsTvuI72CiSlfxczvg",
-        "Italian": "ByVILX2H5wPAwDiNVKAR", // Germano Carella
-        "Spanish": "8ftlfIEYnEkYY6iLanUO",
-        "Romanian": "3z9q8Y7plHbvhDZehEII",
-        "Russian": "Dvfxihpdb69LFIkmih0k",
-        "Portuguese": "NndrHq4eUijN4wsQVtzW",
-        "Turkish": "NsFK0aDGLbVusA7tQfOB"
-    };
-
-    const voiceId = voiceIds[language];
-
-    if (!voiceId) {
-        return res.status(400).send({"message": "Invalid language specified"});
-    }
-
+    const storyId = req.body.storyId;
+    
     try {
-        const url = await getAudioStoryUrl(text, voiceId, userId);
+        // Retrieve the story from Firestore.
+        const storyRef = firestore.collection('stories').doc(userId).collection("private").doc(storyId);
+        const storyDoc = await storyRef.get();
 
+        if (!storyDoc.exists) {
+            return res.status(404).send({"message": "Story not found"});
+        }
+
+        let storyData = storyDoc.data();
+        const { storyContent: text, storyLanguage: language } = storyData;
+
+        const voiceIds = {
+            "English": "SoB87aL6OF4PNV53glOc",
+            "French": "EjtTWI2Y9BBilPwnIBhg",
+            "German": "QtXsTvuI72CiSlfxczvg",
+            "Italian": "ByVILX2H5wPAwDiNVKAR", // Germano Carella
+            "Spanish": "8ftlfIEYnEkYY6iLanUO",
+            "Romanian": "3z9q8Y7plHbvhDZehEII",
+            "Russian": "Dvfxihpdb69LFIkmih0k",
+            "Portuguese": "NndrHq4eUijN4wsQVtzW",
+            "Turkish": "NsFK0aDGLbVusA7tQfOB"
+        };
+
+        const voiceId = voiceIds[language];
+
+        if (!voiceId) {
+            return res.status(400).send({"message": "Invalid language specified"});
+        }
+
+        const audioUrl = await getAudioStoryUrl(text, voiceId, userId);
+
+        storyData.storyAudioUrl = audioUrl;
+
+        await storyRef.update({storyAudioUrl: audioUrl});
+
+        const userRef = firestore.collection('users').doc(userId);
         await firestore.runTransaction(async (transaction) => {
-            const userRef = firestore.collection('users').doc(userId);
             const userDoc = await transaction.get(userRef);
-            const userData = userDoc.data();
-            
-            if (!userData) {
+            if (!userDoc.exists) {
                 throw new Error('UserDataNotFound');
             }
-            
+
+            const userData = userDoc.data();
             const userSubscription = userData.subscription;
-            if (userSubscription.audioCredits > 0) {
+            if (userSubscription && userSubscription.audioCredits > 0) {
                 const updatedCredits = userSubscription.audioCredits - 1;
                 transaction.update(userRef, { 'subscription.audioCredits': updatedCredits });
+            } else {
+                throw new Error('InsufficientAudioCredits');
             }
         });
-        res.send({"data": {"storyId": "", "storyAudioUrl": url}});
+
+        res.send({"data": storyData});
         
     } catch (error) {
         console.error("Error: ", error);
-        res.status(500).send({"message": "There was an error processing your request"});
+        if (error.message === 'InsufficientAudioCredits') {
+            res.status(403).send({"message": "Insufficient audio credits"});
+        } else {
+            res.status(500).send({"message": "There was an error processing your request"});
+        }
     }
 });
 
+
+// app.post('/generate-audio-story', async (req, res) => {
+//     const userId = req.userId;
+//     const storyId = req.body.storyId
+//     const language = req.body.language;
+//     const text = req.body.text;
+//     const voiceIds = {
+//         "English": "SoB87aL6OF4PNV53glOc",
+//         "French": "EjtTWI2Y9BBilPwnIBhg",
+//         "German": "QtXsTvuI72CiSlfxczvg",
+//         "Italian": "ByVILX2H5wPAwDiNVKAR", // Germano Carella
+//         "Spanish": "8ftlfIEYnEkYY6iLanUO",
+//         "Romanian": "3z9q8Y7plHbvhDZehEII",
+//         "Russian": "Dvfxihpdb69LFIkmih0k",
+//         "Portuguese": "NndrHq4eUijN4wsQVtzW",
+//         "Turkish": "NsFK0aDGLbVusA7tQfOB"
+//     };
+
+//     const voiceId = voiceIds[language];
+
+//     if (!voiceId) {
+//         return res.status(400).send({"message": "Invalid language specified"});
+//     }
+
+//     try {
+//         const url = await getAudioStoryUrl(text, voiceId, userId);
+
+//         await firestore.runTransaction(async (transaction) => {
+//             const userRef = firestore.collection('users').doc(userId);
+//             const userDoc = await transaction.get(userRef);
+//             const userData = userDoc.data();
+            
+//             if (!userData) {
+//                 throw new Error('UserDataNotFound');
+//             }
+            
+//             const userSubscription = userData.subscription;
+//             if (userSubscription.audioCredits > 0) {
+//                 const updatedCredits = userSubscription.audioCredits - 1;
+//                 transaction.update(userRef, { 'subscription.audioCredits': updatedCredits });
+//             }
+//         });
+//         res.send({"data": {"storyId": "", "storyAudioUrl": url}});
+        
+//     } catch (error) {
+//         console.error("Error: ", error);
+//         res.status(500).send({"message": "There was an error processing your request"});
+//     }
+// });
 
 app.post('/update-subscription', async (req, res) => {
     const userUid = req.body.event.app_user_id;
