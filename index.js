@@ -157,7 +157,6 @@ app.post('/generate-audio-story', async (req, res) => {
     const storyId = req.body.storyId;
     
     try {
-        // Retrieve the story from Firestore.
         const storyRef = firestore.collection('stories').doc(userId).collection("private").doc(storyId);
         const storyDoc = await storyRef.get();
 
@@ -221,56 +220,6 @@ app.post('/generate-audio-story', async (req, res) => {
     }
 });
 
-
-// app.post('/generate-audio-story', async (req, res) => {
-//     const userId = req.userId;
-//     const storyId = req.body.storyId
-//     const language = req.body.language;
-//     const text = req.body.text;
-//     const voiceIds = {
-//         "English": "SoB87aL6OF4PNV53glOc",
-//         "French": "EjtTWI2Y9BBilPwnIBhg",
-//         "German": "QtXsTvuI72CiSlfxczvg",
-//         "Italian": "ByVILX2H5wPAwDiNVKAR", // Germano Carella
-//         "Spanish": "8ftlfIEYnEkYY6iLanUO",
-//         "Romanian": "3z9q8Y7plHbvhDZehEII",
-//         "Russian": "Dvfxihpdb69LFIkmih0k",
-//         "Portuguese": "NndrHq4eUijN4wsQVtzW",
-//         "Turkish": "NsFK0aDGLbVusA7tQfOB"
-//     };
-
-//     const voiceId = voiceIds[language];
-
-//     if (!voiceId) {
-//         return res.status(400).send({"message": "Invalid language specified"});
-//     }
-
-//     try {
-//         const url = await getAudioStoryUrl(text, voiceId, userId);
-
-//         await firestore.runTransaction(async (transaction) => {
-//             const userRef = firestore.collection('users').doc(userId);
-//             const userDoc = await transaction.get(userRef);
-//             const userData = userDoc.data();
-            
-//             if (!userData) {
-//                 throw new Error('UserDataNotFound');
-//             }
-            
-//             const userSubscription = userData.subscription;
-//             if (userSubscription.audioCredits > 0) {
-//                 const updatedCredits = userSubscription.audioCredits - 1;
-//                 transaction.update(userRef, { 'subscription.audioCredits': updatedCredits });
-//             }
-//         });
-//         res.send({"data": {"storyId": "", "storyAudioUrl": url}});
-        
-//     } catch (error) {
-//         console.error("Error: ", error);
-//         res.status(500).send({"message": "There was an error processing your request"});
-//     }
-// });
-
 app.post('/update-subscription', async (req, res) => {
     const userUid = req.body.event.app_user_id;
     const productId = req.body.event.product_id;
@@ -328,6 +277,47 @@ app.post('/update-subscription', async (req, res) => {
         res.sendStatus(500);
     }
 });
+
+app.post('/purchase-created', async (req, res) => {
+    const userUid = req.body.event.app_user_id
+    const productId = req.body.event.product_id
+    let additionalAudioCredits = 0;
+    switch (productId) {
+        case "stories.starter.pack":
+            additionalAudioCredits = 5
+            break;
+        case "stories.storyteller.pack":
+            additionalAudioCredits = 10
+            break;
+        case "stories.saga.pack":
+            additionalAudioCredits = 24
+            break;
+        default:
+            additionalAudioCredits = 0
+    }
+
+    try {
+        const userRef = firestore.collection('users').doc(userUid);
+        const doc = await userRef.get();
+        if (!doc.exists) {
+            console.error("User not found");
+            return res.sendStatus(404);
+        }
+        const userData = doc.data();
+        const currentAudioCredits = userData.subscription && userData.subscription.audioCredits ? userData.subscription.audioCredits : 0;
+
+        await userRef.set({
+            subscription: {
+                audioCredits: currentAudioCredits + additionalAudioCredits
+            }
+        }, { merge: true });
+
+        res.sendStatus(200);
+    } catch (error) {
+        console.error("Error updating user subscription status:", error);
+        res.sendStatus(500);
+    }
+})
 
 app.listen(port, () => {
     console.log('Server started on: ' + port);
