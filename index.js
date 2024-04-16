@@ -236,17 +236,13 @@ app.post('/update-subscription', async (req, res) => {
     let additionalAudioCredits = 0;
     if (status == "active") {
         switch (productId) {
-            case "zentale.lite.weekly":
-                type = "lite-weekly";
-                additionalAudioCredits = 2;
-                break;
-            case "zentale.lite.monthly":
-                type = "lite-monthly";
+            case "stories.monthly":
+                type = "stories-monthly";
                 additionalAudioCredits = 10;
                 break;
-            case "zentale.lite.yearly":
-                type = "lite-yearly";
-                additionalAudioCredits = 130;
+            case "stories.yearly":
+                type = "stories-yearly";
+                additionalAudioCredits = 10;
                 break;
             default:
                 type = "unknown";
@@ -282,18 +278,23 @@ app.post('/purchase-created', async (req, res) => {
     const userUid = req.body.event.app_user_id
     const productId = req.body.event.product_id
     let additionalAudioCredits = 0;
+    let additionalTextCredits = 0;
     switch (productId) {
         case "stories.starter.pack":
             additionalAudioCredits = 5
+            additionalTextCredits = 5
             break;
         case "stories.storyteller.pack":
             additionalAudioCredits = 10
+            additionalTextCredits = 10
             break;
         case "stories.saga.pack":
             additionalAudioCredits = 24
+            additionalTextCredits = 24
             break;
         default:
             additionalAudioCredits = 0
+            additionalTextCredits = 0
     }
 
     try {
@@ -305,10 +306,12 @@ app.post('/purchase-created', async (req, res) => {
         }
         const userData = doc.data();
         const currentAudioCredits = userData.subscription && userData.subscription.audioCredits ? userData.subscription.audioCredits : 0;
+        const currentTextCredits = userData.subscription && userData.subscription.textCredits ? userData.subscription.textCredits : 0;
 
         await userRef.set({
             subscription: {
-                audioCredits: currentAudioCredits + additionalAudioCredits
+                audioCredits: currentAudioCredits + additionalAudioCredits,
+                textCredits: currentTextCredits + additionalTextCredits
             }
         }, { merge: true });
 

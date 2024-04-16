@@ -47,6 +47,31 @@ exports.assignCreditsToNewUsers = functions.auth.user().onCreate(async (user) =>
     await users.doc(user.uid).set(data)
 });
 
+exports.assignAudioCreditsToYearlyUsers = functions.pubsub
+    .schedule('0 0 1 * *')
+    .onRun(async (context) => {
+        const users = firestore.collection('users');
+        
+        const yearlyActiveUsersSnapshot = await users
+            .where('subscription.type', '==', 'stories-yearly')
+            .where('subscription.status', '==', 'active')
+            .get();
+        
+        const batch = firestore.batch();
+
+        yearlyActiveUsersSnapshot.forEach(doc => {
+            const userRef = doc.ref;
+            batch.update(userRef, { 
+                'subscription.audioCredits': firebase.firestore.FieldValue.increment(10),
+                'subscription.textCredits': firebase.firestore.FieldValue.increment(10)
+                });
+            });
+            
+         await batch.commit();
+    
+        return null;
+    });
+
 // exports.cleanupUserData = functions.auth.user().onDelete(async (user) => {
 //     const userId = user.uid;
 
