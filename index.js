@@ -37,7 +37,8 @@ app.post('/generate-story', async (req, res) => {
     const imageUrlList = req.body.imageUrlList;
     const subscriptionStatus = req.subscriptionStatus
     const maxTokens = subscriptionStatus === "expired" ? 1000 : 4096;
-    const visionPromptText = `Create a story title in ${languageOfTheStory} language for the object in the photo.`
+    // const visionPromptText = `Create a story title in ${languageOfTheStory} language for the object in the photo.`
+    const visionPromptText = `Identify the object in this photo. Imagine this object as a character in a children's fairy tale. Generate a playful and magical story title in ${languageOfTheStory} that could be used for a storybook. Return only the story title.`
     const storyId = uuidv4();
 
     const imageUrlObjects = imageUrlList.map(url => ({
@@ -103,7 +104,7 @@ app.post('/generate-story', async (req, res) => {
                 role: "system",
                 content: "You are an amazing writer, with the Nobel Prize in Literature, the Pulitzer Prize, the Booker Prize, the International Booker Prize, PEN America Literary Awards, and the National Book Award, designed to create amazing stories for kids and adults.",
               },
-              { role: "user", content: `Create a story for kids with the following title: ${storyTitle}. Write the story in ${languageOfTheStory}. Do not add the story title when you return the content.` },
+              { role: "user", content: `Create a story for kids with the following title: ${storyTitle}. Use an easy to understand language for children betwen 2 to 7 years old. Do no write complicated phrases or words. Write the story in ${languageOfTheStory}. Do not add the story title when you return the content.` },
             ],
             model: "gpt-4-0125-preview",
           });
@@ -168,7 +169,7 @@ app.post('/generate-audio-story', async (req, res) => {
         const { storyContent: text, storyLanguage: language } = storyData;
 
         const voiceIds = {
-            "English": "SoB87aL6OF4PNV53glOc",
+            "English": "wJqPPQ618aTW29mptyoc",  // <- Ana Rita : Ella -> "SoB87aL6OF4PNV53glOc",
             "French": "EjtTWI2Y9BBilPwnIBhg",
             "German": "QtXsTvuI72CiSlfxczvg",
             "Italian": "ByVILX2H5wPAwDiNVKAR", // Germano Carella
