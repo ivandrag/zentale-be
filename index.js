@@ -39,7 +39,8 @@ app.post('/generate-story', async (req, res) => {
     const maxTokens = subscriptionStatus === "expired" ? 1000 : 4096;
     // const visionPromptText = `Create a story title in ${languageOfTheStory} language for the object in the photo.`
     const visionPromptText = `Identify the object in this photo. Imagine this object as a character in a children's fairy tale. Generate a playful and magical story title in ${languageOfTheStory} that could be used for a storybook. Return only the story title.`
-    const storyId = uuidv4();
+    // const storyId = uuidv4();
+    const storyId = req.body.storyId
 
     const imageUrlObjects = imageUrlList.map(url => ({
         type: "image_url",
@@ -104,7 +105,7 @@ app.post('/generate-story', async (req, res) => {
                 role: "system",
                 content: "You are an amazing writer, with the Nobel Prize in Literature, the Pulitzer Prize, the Booker Prize, the International Booker Prize, PEN America Literary Awards, and the National Book Award, designed to create amazing stories for kids and adults.",
               },
-              { role: "user", content: `Create a story for kids with the following title: ${storyTitle}. Use an easy to understand language for children betwen 2 to 7 years old. Do no write complicated phrases or words. Write the story in ${languageOfTheStory}. Do not add the story title when you return the content.` },
+              { role: "user", content: `Create a story for kids with the following title: ${storyTitle}. Use an easy to understand language for children between 2 to 7 years old. Do no write complicated phrases or words. Maximum text length should be 1500 characters. The story should teach a learning. Write the story in ${languageOfTheStory}. Do not add the story title when you return the content.` },
             ],
             model: "gpt-4-0125-preview",
           });
@@ -140,7 +141,8 @@ app.post('/generate-story', async (req, res) => {
             storyTitle: sanitizedStoryTitle,
             storyContent: storyContent,
             storyLanguage: languageOfTheStory,
-            storyAudioUrl: ""
+            storyAudioUrl: "",
+            status: "success"
         };
 
         await firestore.collection('stories').doc(userId).collection("private").doc(storyId).set(storyData);
@@ -149,6 +151,18 @@ app.post('/generate-story', async (req, res) => {
 
     } catch(error) {
         console.error("Error in operation: ", error);
+        const storyData = {
+            storyId: storyId,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            storyImage: "",
+            storyTitle: "",
+            storyContent: "",
+            storyLanguage: "",
+            storyAudioUrl: "",
+            status: "error"
+        };
+
+        await firestore.collection('stories').doc(userId).collection("private").doc(storyId).set(storyData);
         res.status(500).send({"message": "There was an error processing your request"});
     }
 })
