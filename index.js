@@ -5,6 +5,12 @@ const bodyParser = require('body-parser');
 var firebase = require("./firebase/index");
 var firestore = firebase.firestore()
 const { OpenAI } = require('openai');
+const mime = require('mime-types');
+const { GoogleAIFileManager } = require('@google/generative-ai/server');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const fs = require('fs');
+const tmp = require('tmp');
+
 const { getAudioStoryUrl } = require('./helpers/generate_audio_story_url');
 const authMiddleware = require("./middleware/auth-middleware");
 const audioAuthMiddleware = require("./middleware/audio-auth-middleware");
@@ -29,6 +35,98 @@ app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 app.use(bodyParser.json({ limit: '5mb' }));
 app.use('/generate-story', authMiddleware)
 app.use('/generate-audio-story', audioAuthMiddleware)
+app.use('/create-story', authMiddleware)
+
+app.post('/create-story', async (req, res) => {
+    try {
+      const userId = req.userId
+      const subscription = req.subscription
+      const { imageUrl, languageOfTheStory, storyId } = req.body;
+      if (!imageUrl || !languageOfTheStory || !storyId) {
+        return res.status(400).json({ error: 'No image URL or language or storyId provided' });
+      }
+  
+      const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(response.data, 'binary');
+    const mimeType = response.headers['content-type'];
+
+    // Create a temporary file
+    const tmpFile = tmp.fileSync({ postfix: `.${mime.extension(mimeType)}` });
+    fs.writeFileSync(tmpFile.name, buffer);
+
+      const apiKey = process.env.GEMINI_API_KEY
+      const fileManager = new GoogleAIFileManager(apiKey);
+      const uploadResult = await fileManager.uploadFile(tmpFile.name, {
+        mimeType: mimeType,
+        displayName: `Uploaded image from URL`,
+      });
+  
+      const fileUri = uploadResult.file.uri;
+    
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const visionPromptText = `Identify the object in this photo. Imagine this object as a character in a children's fairy tale. Generate a playful and magical story title in ${languageOfTheStory} that could be used for a storybook. Return only the story title.`
+  
+      const result = await model.generateContent([
+        visionPromptText,
+        {
+          fileData: {
+            fileUri: fileUri,
+            mimeType: mimeType,
+          },
+        },
+      ]);
+  
+      tmpFile.removeCallback();
+
+      const storyTitle = result.response.text();
+      let sanitizedStoryTitle = storyTitle.replace(/"/g, '');
+
+      const storyPrompt = `Create a story for kids with the following title: ${sanitizedStoryTitle}. Use an easy to understand language for children between 2 to 7 years old. Do not write complicated phrases or words. Maximum text length should be 1500 characters. The story should teach a learning. Write the story in ${languageOfTheStory}. Do not add the story title when you return the content.`;
+
+      const storyResult = await model.generateContent([storyPrompt]);
+
+      if (subscription.status === "expired") {
+        try {
+            await firestore.runTransaction(async (transaction) => {
+                const userRef = firestore.collection('users').doc(userId);
+                const userDoc = await transaction.get(userRef);
+                const userData = userDoc.data();
+    
+                if (!userData) {
+                    throw new Error('UserDataNotFound');
+                }
+    
+                const userSubscription = userData.subscription;
+                if (userSubscription.status === "expired" && userSubscription.textCredits > 0) {
+                    const updatedCredits = userSubscription.textCredits - 1;
+                    transaction.update(userRef, { 'subscription.textCredits': updatedCredits });
+                }
+            });
+        } catch (transactionError) {
+            console.error("Transaction failed: ", transactionError);
+        }
+    }
+
+    const storyData = {
+        storyId: storyId,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        storyImage: imageUrl,
+        storyTitle: sanitizedStoryTitle,
+        storyContent: storyResult.response.text(),
+        storyLanguage: languageOfTheStory,
+        storyAudioUrl: "",
+        status: "success"
+    };
+
+    await firestore.collection('stories').doc(userId).collection("private").doc(storyId).set(storyData);
+
+    res.send({ "data": storyData });
+
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
 app.post('/generate-story', async (req, res) => {
     const userId = req.userId
