@@ -108,9 +108,11 @@ app.post('/create-story', async (req, res) => {
         }
     }
 
+    const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp()
+
     const storyData = {
         storyId: storyId,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp,
         storyImage: imageUrl,
         storyTitle: sanitizedStoryTitle,
         storyContent: storyResult.response.text(),
@@ -121,7 +123,7 @@ app.post('/create-story', async (req, res) => {
 
     await firestore.collection('stories').doc(userId).collection("private").doc(storyId).set(storyData);
 
-    res.send({ "data": storyData });
+    res.send({ "data": "success" });
 
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -232,9 +234,11 @@ app.post('/generate-story', async (req, res) => {
             }
         }
 
+        const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp()
+
         const storyData = {
             storyId: storyId,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: serverTimestamp,
             storyImage: publicUrl,
             storyTitle: sanitizedStoryTitle,
             storyContent: storyContent,

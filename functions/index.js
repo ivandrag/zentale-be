@@ -17,7 +17,7 @@ exports.resetCreditsForFreeUsers = functions.pubsub
         
         freeUsersSnapshot.forEach(doc => {
             const userRef = doc.ref;
-            batch.update(userRef, { 'subscription.textCredits': 2 });
+            batch.update(userRef, { 'subscription.textCredits': 20 });
         });
         
         await batch.commit();
@@ -38,7 +38,7 @@ exports.assignCreditsToNewUsers = functions.auth.user().onCreate(async (user) =>
         subscription: { 
             status: "expired", 
             type: "", 
-            textCredits: 2, 
+            textCredits: 20, 
             audioCredits: 0 
         }
     };
