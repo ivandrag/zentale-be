@@ -144,25 +144,25 @@ app.post('/generate-story', async (req, res) => {
 
     const imageUrlObjects = imageUrlList.map(url => ({
         type: "image_url",
-        image_url: url
-    }));
+        image_url: {
+            "url": url
+        }
+    }));  
 
     try {
         const visionResponse = await openai.chat.completions.create({
-            model: "gpt-4-vision-preview",
+            model: "gpt-4o-mini",
             max_tokens: maxTokens,
             messages: [
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", 
-                        text: visionPromptText 
-                    },
-                        ...imageUrlObjects
-                    ],
-                },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: promptText },
+                  ...imageUrlObjects
+                ],
+              },
             ],
-        });
+          });
 
         const storyTitle = visionResponse.choices[0].message.content
 
