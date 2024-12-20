@@ -157,7 +157,7 @@ app.post('/generate-story', async (req, res) => {
               {
                 role: "user",
                 content: [
-                  { type: "text", text: promptText },
+                  { type: "text", text: visionPromptText },
                   ...imageUrlObjects
                 ],
               },
